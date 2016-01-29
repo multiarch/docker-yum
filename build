@@ -1,0 +1,47 @@
+#!/bin/bash 
+
+#Configurations
+ARCH=armhfp
+RELEASE=7
+MIRROR_URL=http://mirror.centos.org/altarch/7/os/armhfp/
+RELEASE_RPM=centos-userland-release-7-2.1511.el7.centos.0.4.armv7hl.rpm
+RELEASE_URL=$MIRROR_URL/Packages/$RELEASE_RPM
+OUTPUT_DIR=/output
+INSTALL_ROOT=$OUTPUT_DIR/build
+MIRROR_URL=http://mirror.centos.org/altarch/7/os/armhfp/
+YUM="yum --installroot $INSTALL_ROOT -y --nogpgcheck"
+PKG_LIST="yum initscripts passwd rsyslog vim-minimal dhclient chkconfig rootfiles policycoreutils centos-release openssh-server avahi"
+BASE_PKGS="filesystem audit-libs basesystem bash bzip2-libs ca-certificates centos-userland-release chkconfig coreutils cpio cracklib cracklib-dicts cryptsetup-libs curl cyrus-sasl-lib dbus dbus-libs device-mapper device-mapper-libs diffutils elfutils-libelf elfutils-libs expat file-libs gawk gdbm glib2 glibc glibc-common gmp gnupg2 gpgme grep gzip info keyutils-libs kmod kmod-libs krb5-libs libacl libassuan libattr libblkid libcap libcap-ng libcom_err libcurl libdb libdb-utils libffi libgcc libgcrypt libgpg-error libidn libmount libpwquality libselinux libsemanage libsepol libssh2 libstdc++ libtasn1 libuser libutempter libuuid libverto libxml2 lua ncurses ncurses-base ncurses-libs nspr nss nss-softokn nss-softokn-freebl nss-sysinit nss-tools nss-util openldap openssl-libs p11-kit p11-kit-trust pam pcre pinentry pkgconfig popt pth pygpgme pyliblzma python python-chardet python-iniparse python-kitchen python-libs python-pycurl python-urlgrabber pyxattr qrencode-libs readline rootfiles rpm rpm-build-libs rpm-libs rpm-python sed selinux-policy setup shadow-utils shared-mime-info sqlite sudo systemd systemd-libs tzdata ustr util-linux vim-minimal which xz-libs yum yum-metadata-parser yum-plugin-fastestmirror yum-utils zlib"
+
+set -xe
+
+mkdir -p $INSTALL_ROOT
+(
+    set -e
+    cd $INSTALL_ROOT
+    mkdir -p etc var/lib/rpm tmp
+    echo "root:x:0:0:root:/root:/bin/bash" > etc/passwd
+    echo "root:x:0:" > etc/group
+    touch etc/fstab
+    chmod 01777 tmp
+    repodata=$(wget -q -O - "${MIRROR_URL}/repodata/repomd.xml" | sed -n '/<location / s/^.*<location [^>]*href="\([^\"]*\-primary\.xml\.gz\)".*$/\1/p')
+    wget -q -O - "${MIRROR_URL}/${repodata}" | gzip -dc | sed -n '/<location / s/^.*<location [^>]*href="\([^\"]*\)".*$/\1/p' > tmp/packages.list
+
+    set +x
+    for package in $BASE_PKGS; do
+	pkg_url=$(grep -m1 -e "^.*/${package}-[0-9][0-9\.\-].*\.rpm$" tmp/packages.list)
+	pkg_file=$(basename "$pkg_url")
+	#wget -q -O "tmp/$pkg_file" "${MIRROR_URL}/${pkg_url}"
+	(
+	    #rpm2cpio "${INSTALL_ROOT}/tmp/${pkg_file}" | cpio -idmu
+	    :
+	)
+    done
+
+    mkdir -p $INSTALL_ROOT/usr/bin
+    cp /qemu-arm-static $INSTALL_ROOT/usr/bin/
+    
+    chroot $INSTALL_ROOT /usr/bin/rpm -iv --force --nosignature --nodeps --justdb /tmp/*.rpm
+    set -x
+)
+
